@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.db
+etc-letsencrypt/
+www-html/
+*.log
+*.pem

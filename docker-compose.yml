@@ -1,0 +1,52 @@
+services:
+  app:
+    build:
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  nginx:
+    image: nginx:latest
+    depends_on:
+      - app
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - www-html:/var/www/html
+      - ./nginx-conf.d:/etc/nginx/conf.d
+      - etc-letsencrypt:/etc/letsencrypt
+    networks:
+      - app
+
+  certbot:
+    image: certbot/certbot:latest
+    depends_on:
+      - nginx
+    container_name: certbot
+    volumes:
+      - etc-letsencrypt:/etc/letsencrypt
+      - www-html:/var/www/html
+    command: certonly --webroot --webroot-path=/var/www/html --email pavlenko.at@mail.ru --agree-tos --no-eff-email -d test.world-itech.ru
+
+volumes:
+  www-html:
+  dbfile:
+  etc-letsencrypt:
+
+networks:
+  app:
+    driver: bridge
