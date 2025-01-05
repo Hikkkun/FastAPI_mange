@@ -1,6 +1,8 @@
 services:
   app:
+    container_name: fastapi_app
     build:
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
@@ -13,27 +15,45 @@ services:
   redis:
     image: redis:latest
     container_name: redis
-    ports:
-      - "6379:6379"
+    networks:
+      - app
 
   nginx:
     image: nginx:latest
+    container_name: nginx
+    restart: unless-stopped
     ports:
-      - 80:80
-      - 443:443
-    restart: always
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./data/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./data/nginx/proxy_params.conf:/etc/nginx/conf.d/proxy_params.conf:ro
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-    depends_on:
+      - www-html:/var/www/html
+      - ./nginx-conf.d:/etc/nginx/conf.d
+      - etc-letsencrypt:/etc/letsencrypt
+    networks:
       - app
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
 
   certbot:
     image: certbot/certbot:latest
+    container_name: certbot
+    depends_on:
+      - nginx
     volumes:
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-    entrypoint: '/bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;"'
+      - etc-letsencrypt:/etc/letsencrypt
+      - www-html:/var/www/html
+    entrypoint: /bin/sh -c "
+      trap exit TERM;
+      certbot certonly --webroot --webroot-path=/var/www/html --email nikitos19735@yandex.ru --agree-tos --no-eff-email -d fastapi.mwx.su;
+      while :; do
+        certbot renew --webroot --webroot-path=/var/www/html;
+        nginx -s reload;
+        sleep 12h & wait $${!};
+      done"
+
+
+volumes:
+  www-html:
+  etc-letsencrypt:
+
+networks:
+  app:
+    driver: bridge

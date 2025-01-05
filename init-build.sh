@@ -1,5 +1,6 @@
 #!/bin/bash
 
 sudo rm -rf data/certbot
-docker rmi --force certbot/certbot nginx serverapi_fastapi
+docker rm -f $(docker ps -a -q)
+docker rmi $(docker images -q)
 ./init-letsencrypt.sh
