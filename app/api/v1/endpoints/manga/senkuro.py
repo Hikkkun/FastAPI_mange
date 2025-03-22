@@ -12,7 +12,7 @@ router = APIRouter()
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
-#logging.getLogger("httpx").setLevel(logging.WARNING)  # Уменьшаем уровень логгирования для httpx, чтобы избежать лишних сообщений
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Уменьшаем уровень логгирования для httpx, чтобы избежать лишних сообщений
 
 # Настройки
 URL = "https://api.senkuro.com/graphql"
