@@ -1,24 +1,44 @@
-from fastapi import FastAPI, Depends
-from app.redis.redis_client import get_redis_client
-from redis import Redis
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
 
-app = FastAPI(title="FastAPI Redis App", version="1.0.0")
-
-
-@app.get("/ping", summary="Test endpoint", tags=["Health Check"])
-async def ping():
-    return {"message": "Pong!"}
+from app.api.v1.endpoints.manga.senkuro import router as senkuro_router
+from app.api.v1.endpoints.ranobe.ranobe import router as ranobe_router
+from app.redis.redis_client import init_redis, close_redis
 
 
-@app.get("/cache/{key}", summary="Get value from Redis", tags=["Redis"])
-async def get_cache_value(key: str, redis_client: Redis = Depends(get_redis_client)):
-    value = redis_client.get(key)
-    if value:
-        return {"key": key, "value": value}
-    return {"key": key, "message": "Key not found"}
+logger = logging.getLogger(__name__) # Логгер для текущего модуля
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Управляет жизненным циклом приложения: инициализирует и закрывает Redis.
+    """
+    logger.info("Инициализация Redis...")
+    await init_redis()
+    logger.info("Redis успешно инициализирован.")
+    
+    yield  # Приложение работает здесь
+    
+    logger.info("Закрытие Redis...")
+    await close_redis()
+    logger.info("Redis успешно закрыт.")
+    
 
-@app.post("/cache/{key}/{value}", summary="Set value in Redis", tags=["Redis"])
-async def set_cache_value(key: str, value: str, redis_client: Redis = Depends(get_redis_client)):
-    redis_client.set(key, value)
-    return {"key": key, "value": value, "message": "Value set successfully"}
+app = FastAPI(
+    title="FastAPI Redis App",  # Название приложения
+    version="1.0.0",  # Версия приложения
+    lifespan=lifespan  # Управление жизненным циклом приложения
+)
+
+templates = Jinja2Templates(directory="app/templates")
+
+# Подключение роутеров для работы с API
+app.include_router(senkuro_router, tags=["Manga"])
+app.include_router(ranobe_router, tags=["Ranobe"])
+
+# Главная страница
+@app.get("/")
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})

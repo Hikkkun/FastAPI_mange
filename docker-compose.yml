@@ -1,39 +1,68 @@
+version: "3.8"
+
 services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - app-network
+    depends_on:
+      - fastapi
+    restart: unless-stopped
+  
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - app-network
+    restart: unless-stopped
+    environment:
+      - staging=1
+
   fastapi:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: fastapi
+    restart: unless-stopped
     ports:
       - "8000:8000"
     depends_on:
       - redis
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: gunicorn --workers 7 -b 0.0.0.0:8000 -k uvicorn.workers.UvicornWorker app.main:app
+    networks:
+      - app-network
 
   redis:
     image: redis:latest
     container_name: redis
-
-  nginx:
-    image: nginx:latest
-    container_name: nginx
-    restart: always
+    restart: unless-stopped
     volumes:
-      - ./nginx-conf.d/nginx_app.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx-conf.d/inx/proxy_params.conf:/etc/nginx/conf.d/proxy_params.conf:ro
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - fastapi
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+      - ./redis/data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    expose:
+      - 6379
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - app-network
 
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - ./data/certbot/conf:/etc/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-    entrypoint: '/bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;"'
+networks:
+  app-network:
+    driver: bridge
