@@ -7,7 +7,7 @@ if ! [ -x "$(command -v docker-compose)" ] && ! [ -x "$(command -v docker compos
 fi
 # bypass.mwx.su
 # Настройка переменных
-domains=(fastapi.mwx.su)
+domains=(bypass.mwx.su)
 rsa_key_size=4096
 data_path="./data/certbot"
 email="" # Adding a valid address is strongly recommended
