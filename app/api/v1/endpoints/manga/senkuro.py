@@ -3,7 +3,6 @@ import asyncio
 import logging
 import socket
 import json
-import os
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -13,7 +12,7 @@ router = APIRouter()
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
-logging.getLogger("httpx").setLevel(logging.WARNING)  # Уменьшаем уровень логгирования для httpx, чтобы избежать лишних сообщений
+#logging.getLogger("httpx").setLevel(logging.WARNING)  # Уменьшаем уровень логгирования для httpx, чтобы избежать лишних сообщений
 
 # Настройки
 URL = "https://api.senkuro.com/graphql"
@@ -122,7 +121,6 @@ async def title_search(text: str, redis = Depends(get_redis)):
     else:
         return JSONResponse(content={"error": "Request failed"}, status_code=500)
 
-
 @router.get("/api/manga/senkuro/title/{slug:str}")
 @router.get("/api/manga/senkuro/title/{slug:str}/{any}")
 @router.get("/manga/{slug:str}")
@@ -217,7 +215,7 @@ async def get_chapters(slug: str, redis = Depends(get_redis)):
         # Логируем ошибку и возвращаем ответ с ошибкой
         logger.error(f"Ошибка при получении данных манги: {e}")
         return JSONResponse(content={"error": "Failed to fetch manga data"}, status_code=500)
-        
+    
     query = '''
         query($branchId: ID!, $after: String, $first: Int) { 
             mangaChapters(branchId: $branchId, after: $after, first: $first) { 
@@ -251,3 +249,32 @@ async def get_chapters(slug: str, redis = Depends(get_redis)):
         return JSONResponse(content=chapters_list, status_code=200)
     
     return JSONResponse(content={"error": "Request failed"}, status_code=500)
+
+@router.get("/api/manga/senkuro/{slug}/{chapterId}")
+@router.get("/api/manga/senkuro/images/{slug}/{chapterId}")
+async def title_images(slug, chapterId:str, redis = Depends(get_redis)): 
+    cache = await redis.get(f"{slug}_{chapterId}")
+    if cache:
+        return JSONResponse(content=json.loads(cache), status_code=200)
+    
+    try:
+        # Получаем данные о манге
+        manga_response = await get_data(slug, redis)
+        manga_data = json.loads(manga_response.body.decode("utf-8"))
+    except Exception as e:
+        # Логируем ошибку и возвращаем ответ с ошибкой
+        logger.error(f"Ошибка при получении данных манги: {e}")
+        return JSONResponse(content={"error": "Failed to fetch manga data"}, status_code=500) 
+    
+    query = '''
+        query fetchTachiyomiChapterPages($mangaId: ID!, $chapterId: ID!) { 
+            mangaTachiyomiChapterPages(mangaId: $mangaId, chapterId: $chapterId) { pages { url } } 
+        }
+    '''
+    variables = {'mangaId': manga_data.get('id'), 'chapterId': chapterId}
+    
+    response = await fetch({'query': query, 'variables': variables})
+    if response:
+        images = [image.get('url', '') for image in response.get('data', {}).get('mangaTachiyomiChapterPages', {}).get('pages', [])]
+        await redis.setex(f"{slug}_{chapterId}", 3600, json.dumps({'links':images}))
+        return JSONResponse(content={'links':images}, status_code=200)
